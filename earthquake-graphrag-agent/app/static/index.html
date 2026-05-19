@@ -1,0 +1,346 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>地震应急策略生成系统 — GraphRAG Agent</title>
+<style>
+:root {
+  --primary: #1e3a5f;
+  --primary-light: #2c5282;
+  --accent: #c53030;
+  --accent-light: #fc8181;
+  --warning: #c05621;
+  --success: #2f855a;
+  --bg: #f0f2f5;
+  --card: #ffffff;
+  --border: #e2e8f0;
+  --text: #2d3748;
+  --text-light: #718096;
+  --shadow: 0 2px 8px rgba(0,0,0,0.08);
+  --radius: 10px;
+}
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+  background: var(--bg); color: var(--text); min-height: 100vh;
+}
+.header {
+  background: linear-gradient(135deg, var(--primary) 0%, #2a4a6e 100%);
+  color: #fff; padding: 20px 32px; display: flex; align-items: center; justify-content: space-between;
+  box-shadow: 0 2px 12px rgba(0,0,0,0.15);
+}
+.header h1 { font-size: 1.35rem; font-weight: 600; letter-spacing: 0.5px; }
+.header .subtitle { font-size: 0.82rem; opacity: 0.8; margin-top: 2px; }
+.header .badge {
+  background: rgba(255,255,255,0.15); backdrop-filter: blur(4px);
+  padding: 8px 16px; border-radius: 20px; font-size: 0.85rem; white-space: nowrap;
+}
+.badge span { font-weight: 700; font-size: 1.1rem; color: #fbd38d; }
+.container { display: flex; gap: 20px; padding: 20px 24px; max-width: 1400px; margin: 0 auto; min-height: calc(100vh - 140px); }
+.panel {
+  background: var(--card); border-radius: var(--radius); box-shadow: var(--shadow);
+  padding: 24px; display: flex; flex-direction: column;
+}
+.panel-left { flex: 0 0 420px; }
+.panel-right { flex: 1; min-width: 0; }
+.panel-title {
+  font-size: 1rem; font-weight: 600; color: var(--primary); margin-bottom: 16px;
+  padding-bottom: 10px; border-bottom: 2px solid var(--border);
+  display: flex; align-items: center; gap: 8px;
+}
+.panel-title .icon { font-size: 1.2rem; }
+textarea {
+  width: 100%; flex: 1; min-height: 160px; padding: 14px; font-size: 0.92rem; line-height: 1.7;
+  border: 2px solid var(--border); border-radius: 8px; resize: vertical;
+  font-family: inherit; transition: border-color 0.2s; color: var(--text);
+}
+textarea:focus { outline: none; border-color: var(--primary-light); }
+.examples { margin-top: 14px; }
+.examples .label { font-size: 0.78rem; color: var(--text-light); margin-bottom: 8px; }
+.example-btn {
+  display: block; width: 100%; text-align: left; padding: 10px 14px; margin-bottom: 6px;
+  border: 1px solid var(--border); border-radius: 6px; background: #f7fafc;
+  font-size: 0.82rem; color: var(--text); cursor: pointer; transition: all 0.15s;
+  line-height: 1.5; font-family: inherit;
+}
+.example-btn:hover { background: #ebf4ff; border-color: var(--primary-light); color: var(--primary); }
+.example-btn .tag {
+  display: inline-block; font-size: 0.7rem; padding: 2px 8px; border-radius: 10px;
+  margin-right: 6px; background: var(--primary-light); color: #fff; vertical-align: middle;
+}
+.btn-generate {
+  width: 100%; padding: 14px; margin-top: 16px;
+  background: var(--accent); color: #fff; border: none; border-radius: 8px;
+  font-size: 1rem; font-weight: 600; cursor: pointer; transition: all 0.2s;
+  letter-spacing: 0.5px; font-family: inherit;
+}
+.btn-generate:hover:not(:disabled) { background: #9b2c2c; transform: translateY(-1px); box-shadow: 0 4px 12px rgba(197,48,48,0.3); }
+.btn-generate:disabled { opacity: 0.6; cursor: not-allowed; }
+.slider-row {
+  display: flex; align-items: center; gap: 10px; margin-top: 12px; font-size: 0.82rem;
+  color: var(--text-light);
+}
+.slider-row input[type=range] { flex: 1; accent-color: var(--primary-light); }
+
+.spinner { display: inline-block; width: 18px; height: 18px; border: 2px solid rgba(255,255,255,0.3); border-top-color: #fff; border-radius: 50%; animation: spin 0.7s linear infinite; vertical-align: middle; margin-right: 8px; }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+.placeholder {
+  flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center;
+  color: #cbd5e0;
+}
+.placeholder .big-icon { font-size: 4rem; margin-bottom: 12px; }
+.placeholder p { font-size: 0.92rem; }
+
+.result-section { margin-bottom: 20px; }
+.result-section h3 {
+  font-size: 0.92rem; font-weight: 600; color: var(--primary); margin-bottom: 8px;
+  padding: 6px 12px; background: #ebf4ff; border-radius: 4px; border-left: 3px solid var(--primary-light);
+}
+.result-section .content { font-size: 0.88rem; line-height: 1.75; padding-left: 4px; }
+.result-section ul { padding-left: 20px; }
+.result-section li { margin-bottom: 4px; }
+
+.chain-tag {
+  display: inline-block; padding: 4px 12px; margin: 3px 4px 3px 0;
+  background: #fff5f5; border: 1px solid #feb2b2; border-radius: 14px;
+  font-size: 0.8rem; color: #742a2a;
+}
+
+.case-card {
+  background: #f7fafc; border: 1px solid var(--border); border-radius: 8px;
+  padding: 14px; margin-bottom: 10px;
+}
+.case-card .case-title { font-weight: 600; font-size: 0.88rem; }
+.case-card .case-score {
+  display: inline-block; padding: 2px 10px; border-radius: 10px;
+  background: #fbd38d; color: #744210; font-size: 0.75rem; font-weight: 600;
+  margin-left: 8px; vertical-align: middle;
+}
+.case-card .case-detail { font-size: 0.8rem; color: var(--text-light); margin-top: 6px; line-height: 1.6; }
+
+.event-id { font-size: 0.75rem; color: var(--text-light); margin-bottom: 16px; }
+.event-id code { background: #edf2f7; padding: 2px 8px; border-radius: 3px; font-size: 0.78rem; }
+
+.error-box {
+  background: #fff5f5; border: 1px solid #feb2b2; border-radius: 8px;
+  padding: 16px; color: #742a2a; font-size: 0.88rem;
+}
+
+.measure-list { counter-reset: measure; list-style: none; padding-left: 0; }
+.measure-list li { counter-increment: measure; padding: 8px 0 8px 32px; position: relative; border-bottom: 1px solid #f0f0f0; }
+.measure-list li::before {
+  content: counter(measure); position: absolute; left: 0; top: 8px;
+  width: 22px; height: 22px; border-radius: 50%; background: var(--primary-light);
+  color: #fff; font-size: 0.75rem; font-weight: 600; text-align: center; line-height: 22px;
+}
+
+@media (max-width: 900px) {
+  .container { flex-direction: column; padding: 12px; }
+  .panel-left { flex: none; }
+  .header { padding: 14px 16px; flex-direction: column; gap: 8px; text-align: center; }
+}
+</style>
+</head>
+<body>
+
+<div class="header">
+  <div>
+    <h1>地震应急策略生成系统</h1>
+    <div class="subtitle">风险因果链 · 事故案例图谱 · GraphRAG 多 Agent 编排</div>
+  </div>
+  <div class="badge">案例库：<span id="caseCount">--</span> 条</div>
+</div>
+
+<div class="container">
+  <div class="panel panel-left">
+    <div class="panel-title"><span class="icon"></span>灾情输入</div>
+    <textarea id="disasterInput" placeholder="请输入地震灾情描述文本……&#10;&#10;例如：某山区发生6.8级地震，震中附近乡镇房屋倒塌，道路塌方，通信中断，部分群众被困，并且仍有余震风险。"></textarea>
+    <div class="examples">
+      <div class="label">快捷示例：</div>
+      <button class="example-btn" data-text="某山区发生6.8级地震，震中附近乡镇房屋倒塌，道路塌方，通信中断，部分群众被困，并且仍有余震风险。">
+        <span class="tag">山区</span>6.8级强震 — 道路中断、人员被困
+      </button>
+      <button class="example-btn" data-text="城市中心区发生6.5级地震，老旧建筑倒塌，医院短时间内接收大量伤员，交通拥堵，避难场所容量不足，群众出现恐慌情绪。">
+        <span class="tag">城市</span>6.5级地震 — 建筑倒塌、医疗挤兑
+      </button>
+      <button class="example-btn" data-text="强震在峡谷区诱发大规模山体滑坡，滑坡体堵塞河道形成堰塞湖，上游水位持续上涨，下游居民点存在溃决洪水威胁，道路受损导致大型机械进场困难。">
+        <span class="tag">河谷</span>7.2级强震 — 堰塞湖、洪水威胁
+      </button>
+    </div>
+    <div class="slider-row">
+      <span>检索案例数：</span>
+      <input type="range" id="topK" min="1" max="10" value="3">
+      <span id="topKLabel">3</span>
+    </div>
+    <button class="btn-generate" id="btnGenerate" onclick="generate()">生成应急策略</button>
+  </div>
+
+  <div class="panel panel-right" id="resultPanel">
+    <div class="panel-title"><span class="icon"></span>生成结果</div>
+    <div class="placeholder" id="placeholder">
+      <div class="big-icon"></div>
+      <p>输入灾情文本后点击「生成应急策略」查看结果</p>
+    </div>
+    <div id="resultContent" style="display:none; flex:1; overflow-y:auto;"></div>
+  </div>
+</div>
+
+<script>
+const input = document.getElementById('disasterInput');
+const btn = document.getElementById('btnGenerate');
+const topK = document.getElementById('topK');
+const topKLabel = document.getElementById('topKLabel');
+const placeholder = document.getElementById('placeholder');
+const resultContent = document.getElementById('resultContent');
+const caseCount = document.getElementById('caseCount');
+
+topK.oninput = () => { topKLabel.textContent = topK.value; };
+
+document.querySelectorAll('.example-btn').forEach(btn => {
+  btn.onclick = () => { input.value = btn.dataset.text; };
+});
+
+async function loadCaseCount() {
+  try {
+    const r = await fetch('/cases');
+    const cases = await r.json();
+    caseCount.textContent = cases.length;
+  } catch(e) { caseCount.textContent = '?'; }
+}
+loadCaseCount();
+
+function showResult() { placeholder.style.display = 'none'; resultContent.style.display = 'block'; }
+
+function parseMarkdown(text) {
+  let lines = text.split('\n');
+  let html = '';
+  let inList = false;
+
+  for (let i = 0; i < lines.length; i++) {
+    let line = lines[i];
+    if (line.startsWith('# ')) {
+      if (inList) { html += '</ul>'; inList = false; }
+      html += '<h2 style="font-size:1.1rem;font-weight:700;color:#1a202c;margin:16px 0 8px;padding-bottom:6px;border-bottom:2px solid #e2e8f0;">' + esc(line.slice(2)) + '</h2>';
+    } else if (line.startsWith('## ')) {
+      if (inList) { html += '</ul>'; inList = false; }
+      html += '<h3 style="font-size:1rem;font-weight:600;color:#2c5282;margin:14px 0 6px;">' + esc(line.slice(3)) + '</h3>';
+    } else if (/^\d+\.\s/.test(line)) {
+      if (inList) { html += '</ul>'; inList = false; }
+      html += '<div style="margin:4px 0 4px 8px;font-size:0.88rem;line-height:1.7;">' + esc(line) + '</div>';
+    } else if (line.startsWith('- ') || line.startsWith('  - ')) {
+      if (!inList) { html += '<ul style="margin:4px 0;padding-left:20px;font-size:0.88rem;line-height:1.7;">'; inList = true; }
+      html += '<li>' + esc(line.replace(/^\s*-\s*/, '')) + '</li>';
+    } else if (line.trim() === '') {
+      if (inList) { html += '</ul>'; inList = false; }
+      html += '<div style="height:6px;"></div>';
+    } else {
+      if (inList) { html += '</ul>'; inList = false; }
+      html += '<p style="font-size:0.88rem;line-height:1.7;margin:4px 0;">' + esc(line) + '</p>';
+    }
+  }
+  if (inList) html += '</ul>';
+  return html;
+}
+
+function esc(s) {
+  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+async function generate() {
+  const text = input.value.trim();
+  if (!text) { input.focus(); return; }
+
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner"></span>正在生成策略...';
+  placeholder.style.display = 'flex';
+  resultContent.style.display = 'none';
+
+  try {
+    const r = await fetch('/generate_strategy', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({disaster_text: text, top_k: parseInt(topK.value)})
+    });
+    if (!r.ok) {
+      const err = await r.json();
+      throw new Error(err.detail || '请求失败');
+    }
+    const data = await r.json();
+    render(data);
+  } catch(e) {
+    placeholder.style.display = 'flex';
+    placeholder.innerHTML = '<div class="error-box">' + esc(e.message) + '</div>';
+    resultContent.style.display = 'none';
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = '生成应急策略';
+  }
+}
+
+function render(data) {
+  showResult();
+
+  let html = '';
+  html += '<div class="event-id">事件ID：<code>' + esc(data.event_id) + '</code> ｜ 生成时间：' + esc(data.created_at) + '</div>';
+
+  // Extracted event info
+  const ev = data.extracted_event || {};
+  html += '<div class="result-section">';
+  html += '<h3>灾情要素抽取</h3>';
+  html += '<div class="content">';
+  html += '<span style="margin-right:16px;">震级：<b>' + (ev.magnitude != null ? ev.magnitude + ' 级' : '未知') + '</b></span>';
+  html += '<span style="margin-right:16px;">地点线索：<b>' + esc(ev.location_hint || '未知') + '</b></span>';
+  html += '<span>场景类型：<b>' + esc((ev.scenarios || []).join('、') || '综合地震灾情') + '</b></span>';
+  html += '</div></div>';
+
+  // Risk chain
+  const chain = data.current_risk_chain || [];
+  html += '<div class="result-section">';
+  html += '<h3>当前风险因果链</h3>';
+  html += '<div class="content">';
+  chain.forEach((r, i) => {
+    html += '<span class="chain-tag">' + (i+1) + '. ' + esc(r) + '</span>';
+  });
+  html += '</div></div>';
+
+  // Retrieved cases
+  const cases = data.retrieved_cases || [];
+  html += '<div class="result-section">';
+  html += '<h3>相似历史案例（图谱检索 Top ' + cases.length + '）</h3>';
+  if (cases.length === 0) {
+    html += '<div class="content">未检索到高相关案例。</div>';
+  } else {
+    cases.forEach(c => {
+      html += '<div class="case-card">';
+      html += '<span class="case-title">' + esc(c.title || '') + '</span>';
+      html += '<span class="case-score">匹配分：' + (c.final_score != null ? c.final_score.toFixed(4) : '--') + '</span>';
+      if (c.matched_risks && c.matched_risks.length) {
+        html += '<div class="case-detail">匹配风险：' + esc(c.matched_risks.slice(0,3).join('；')) + '</div>';
+      }
+      if (c.lessons && c.lessons.length) {
+        html += '<div class="case-detail">可复用经验：' + esc(c.lessons.slice(0,2).join('；')) + '</div>';
+      }
+      html += '</div>';
+    });
+  }
+  html += '</div>';
+
+  // Strategy (parsed markdown)
+  html += '<div class="result-section">';
+  html += '<h3>完整应急策略</h3>';
+  html += '<div class="content">' + parseMarkdown(data.strategy || '') + '</div>';
+  html += '</div>';
+
+  resultContent.innerHTML = html;
+  resultContent.scrollTop = 0;
+}
+
+// Ctrl+Enter to submit
+input.addEventListener('keydown', e => {
+  if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') generate();
+});
+</script>
+</body>
+</html>
